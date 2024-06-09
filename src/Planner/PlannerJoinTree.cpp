@@ -39,6 +39,7 @@
 #include <Parsers/parseQuery.h>
 
 #include <Processors/Sources/NullSource.h>
+#include <Processors/QueryPlan/AddingTableNameVirtualColumnStep.h>
 #include <Processors/QueryPlan/SortingStep.h>
 #include <Processors/QueryPlan/CreateSetAndFilterOnTheFlyStep.h>
 #include <Processors/QueryPlan/ReadFromPreparedSource.h>
@@ -611,22 +612,7 @@ std::unique_ptr<ExpressionStep> createComputeAliasColumnsStep(
     return alias_column_step;
 }
 
-std::unique_ptr<ExpressionStep> createAddingVirtualColumnsStep(
-    const DataStream & current_data_stream,
-    const StoragePtr & storage)
-{
-    ColumnWithTypeAndName column;
-    column.name = "_table";
-    column.type = std::make_shared<DataTypeLowCardinality>(std::make_shared<DataTypeString>());
-    column.column = column.type->createColumnConst(0, storage->getStorageID().getTableName());
-
-    auto adding_virtual_column_dag = ActionsDAG::makeAddingColumnActions(std::move(column));
-    auto adding_virtual_column_step = std::make_unique<ExpressionStep>(current_data_stream, std::move(adding_virtual_column_dag));
-    adding_virtual_column_step->setStepDescription("Add universal virtual columns");
-    return adding_virtual_column_step;
-}
-
-bool extractRequiredColumnsFromStorage(
+bool extractRequiredNonTableColumnsFromStorage(
     const Names & columns_names,
     const StoragePtr & storage,
     const StorageSnapshotPtr & storage_snapshot,
@@ -947,8 +933,8 @@ JoinTreeQueryPlan buildQueryPlanForTableExpression(QueryTreeNodePtr table_expres
 
                 Names extracted_column_names;
                 const auto has_table_virtual_column
-                    = extractRequiredColumnsFromStorage(columns_names, storage, storage_snapshot, from_stage,
-                                                        table_expression_query_info, query_context, extracted_column_names);
+                    = extractRequiredNonTableColumnsFromStorage(columns_names, storage, storage_snapshot, from_stage,
+                                                                table_expression_query_info, query_context, extracted_column_names);
 
                 storage->read(
                     query_plan,
@@ -1055,8 +1041,9 @@ JoinTreeQueryPlan buildQueryPlanForTableExpression(QueryTreeNodePtr table_expres
                     const auto & data_stream = query_plan.getCurrentDataStream();
                     if (!data_stream.header.findByName("_table"))
                     {
-                        auto adding_virtual_column_step = createAddingVirtualColumnsStep(data_stream, storage);
-                        query_plan.addStep(std::move(adding_virtual_column_step));
+                        const auto & table_name = storage->getStorageID().getTableName();
+                        auto adding_table_name_virtual_column_step = std::make_unique<AddingTableNameVirtualColumnStep>(data_stream, table_name);
+                        query_plan.addStep(std::move(adding_table_name_virtual_column_step));
                     }
                 }
 

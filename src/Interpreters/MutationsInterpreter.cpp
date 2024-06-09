@@ -28,6 +28,7 @@
 #include <Parsers/formatAST.h>
 #include <Parsers/queryToString.h>
 #include <IO/WriteHelpers.h>
+#include <Processors/QueryPlan/AddingTableNameVirtualColumnStep.h>
 #include <Processors/QueryPlan/CreatingSetsStep.h>
 #include <DataTypes/NestedUtils.h>
 #include <Interpreters/PreparedSets.h>
@@ -537,22 +538,7 @@ static std::optional<std::vector<ASTPtr>> getExpressionsOfUpdatedNestedSubcolumn
     return res;
 }
 
-static std::unique_ptr<ExpressionStep> createAddingVirtualColumnsStep(
-    const DataStream & current_data_stream,
-    const StoragePtr & storage)
-{
-    ColumnWithTypeAndName column;
-    column.name = "_table";
-    column.type = std::make_shared<DataTypeLowCardinality>(std::make_shared<DataTypeString>());
-    column.column = column.type->createColumnConst(0, storage->getStorageID().getTableName());
-
-    auto adding_virtual_column_dag = ActionsDAG::makeAddingColumnActions(std::move(column));
-    auto adding_virtual_column_step = std::make_unique<ExpressionStep>(current_data_stream, std::move(adding_virtual_column_dag));
-    adding_virtual_column_step->setStepDescription("Add universal virtual columns");
-    return adding_virtual_column_step;
-}
-
-static bool extractRequiredColumnsFromStorage(
+static bool extractRequiredNonTableColumnsFromStorage(
     const Names & columns_names,
     const StoragePtr & storage,
     const StorageSnapshotPtr & storage_snapshot,
@@ -1287,15 +1273,16 @@ void MutationsInterpreter::Source::read(
         size_t max_streams = 1;
         Names extracted_column_names;
         const auto has_table_virtual_column
-            = extractRequiredColumnsFromStorage(required_columns, storage, storage_snapshot, extracted_column_names);
+            = extractRequiredNonTableColumnsFromStorage(required_columns, storage, storage_snapshot, extracted_column_names);
 
         storage->read(plan, has_table_virtual_column ? extracted_column_names : required_columns, storage_snapshot,
             query_info, context_, QueryProcessingStage::FetchColumns, max_block_size, max_streams);
 
         if (has_table_virtual_column && plan.isInitialized())
         {
-            auto adding_virtual_column_step = createAddingVirtualColumnsStep(plan.getCurrentDataStream(), storage);
-            plan.addStep(std::move(adding_virtual_column_step));
+            const auto & table_name = storage->getStorageID().getTableName();
+            auto adding_table_name_virtual_column_step = std::make_unique<AddingTableNameVirtualColumnStep>(plan.getCurrentDataStream(), table_name);
+            plan.addStep(std::move(adding_table_name_virtual_column_step));
         }
 
         if (!plan.isInitialized())
