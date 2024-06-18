@@ -89,7 +89,7 @@ To select data from a virtual column, you must specify its name in the `SELECT` 
 
 If you create a table with a column that has the same name as one of the table virtual columns, the virtual column becomes inaccessible. We do not recommend doing this. To help avoid conflicts, virtual column names are usually prefixed with an underscore.
 
-- `_table` — Contains the name of the table from which data was read. Type: [String](../../../sql-reference/data-types/string.md).
+- `_table` — Contains the name of the table from which data was read. Type: [String](../../sql-reference/data-types/string.md).
 
     Regardless of the table engine being used, each table includes a universal virtual column named `_table`.
 
