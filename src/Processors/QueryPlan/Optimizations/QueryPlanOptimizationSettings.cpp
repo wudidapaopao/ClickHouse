@@ -41,6 +41,7 @@ namespace Setting
     extern const SettingsBool query_plan_merge_expressions;
     extern const SettingsBool query_plan_merge_filter_into_join_condition;
     extern const SettingsBool query_plan_merge_filters;
+    extern const SettingsBool query_plan_push_cross_table_filter_into_join;
     extern const SettingsBool query_plan_optimize_lazy_materialization;
     extern const SettingsBool query_plan_optimize_prewhere;
     extern const SettingsBool query_plan_push_down_limit;
@@ -134,6 +135,7 @@ QueryPlanOptimizationSettings::QueryPlanOptimizationSettings(
     try_use_vector_search = from[Setting::query_plan_enable_optimizations] && from[Setting::query_plan_try_use_vector_search];
     convert_join_to_in = from[Setting::query_plan_enable_optimizations] && from[Setting::query_plan_convert_join_to_in];
     merge_filter_into_join_condition = from[Setting::query_plan_enable_optimizations] && from[Setting::query_plan_merge_filter_into_join_condition];
+    push_cross_table_filter_into_join = from[Setting::query_plan_enable_optimizations] && from[Setting::query_plan_push_cross_table_filter_into_join];
     convert_any_join_to_semi_or_anti_join = from[Setting::query_plan_enable_optimizations] && from[Setting::query_plan_convert_any_join_to_semi_or_anti_join];
     try_use_top_k_optimization = from[Setting::use_skip_indexes_for_top_k] || from[Setting::use_top_k_dynamic_filtering];
 

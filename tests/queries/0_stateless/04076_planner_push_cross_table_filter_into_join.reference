@@ -1,0 +1,107 @@
+--- test 1: hash join, setting OFF ---
+1	10	1	5
+3	30	3	10
+--- test 1: hash join, setting ON ---
+1	10	1	5
+3	30	3	10
+--- test 1 explain: hash join, setting OFF ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + Projection))
+      Filter (WHERE)
+        Expression (Post Join Actions)
+          Join (JOIN FillRightFirst)
+            Expression (Left Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+            Expression (Right Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+--- test 1 explain: hash join, setting ON ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + (Projection + )))
+      Expression (Post Join Actions)
+        Join (JOIN FillRightFirst)
+          Expression (Left Pre Join Actions)
+            Expression (Change column names to column identifiers)
+              ReadFromMemoryStorage
+          Expression (Right Pre Join Actions)
+            Expression (Change column names to column identifiers)
+              ReadFromMemoryStorage
+--- test 2: multiple conditions, setting OFF ---
+1	10	1	5
+3	30	3	10
+--- test 2: multiple conditions, setting ON ---
+1	10	1	5
+3	30	3	10
+--- test 2 explain: multiple conditions, setting OFF ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + Projection))
+      Filter (WHERE)
+        Expression (Post Join Actions)
+          Join (JOIN FillRightFirst)
+            Expression (Left Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+            Expression (Right Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+--- test 2 explain: multiple conditions, setting ON ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + (Projection + )))
+      Expression (Post Join Actions)
+        Join (JOIN FillRightFirst)
+          Expression (Left Pre Join Actions)
+            Expression (Change column names to column identifiers)
+              ReadFromMemoryStorage
+          Expression (Right Pre Join Actions)
+            Expression (Change column names to column identifiers)
+              ReadFromMemoryStorage
+--- test 3: full_sorting_merge, setting OFF ---
+1	10	1	5
+3	30	3	10
+--- test 3: full_sorting_merge, setting ON ---
+1	10	1	5
+3	30	3	10
+--- test 3 explain: full_sorting_merge, setting OFF ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + Projection))
+      Filter (WHERE)
+        Expression (Post Join Actions)
+          Join (JOIN YShaped)
+            Sorting (Sort Left before JOIN)
+              Expression (Left Pre Join Actions)
+                Expression (Change column names to column identifiers)
+                  ReadFromMemoryStorage
+            Sorting (Sort Right before JOIN)
+              Expression (Right Pre Join Actions)
+                Expression (Change column names to column identifiers)
+                  ReadFromMemoryStorage
+--- test 3 explain: full_sorting_merge, setting ON ---
+Expression (Project names)
+  Sorting (Sorting for ORDER BY)
+    Expression ((Before ORDER BY + (Projection + )))
+      Filter (Post Join Actions)
+        Join (JOIN YShaped)
+          Sorting (Sort Left before JOIN)
+            Expression (Left Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+          Sorting (Sort Right before JOIN)
+            Expression (Right Pre Join Actions)
+              Expression (Change column names to column identifiers)
+                ReadFromMemoryStorage
+--- test 4: mixed conditions, setting OFF ---
+1	10	x	1	5	x
+2	20	y	2	25	y
+3	30	z	3	10	z
+4	5	w	4	50	w
+--- test 4: mixed conditions, setting ON ---
+1	10	x	1	5	x
+2	20	y	2	25	y
+3	30	z	3	10	z
+4	5	w	4	50	w

@@ -57,6 +57,7 @@ enum class ExpressionSide : uint8_t
     UNKNOWN = 0,
     LEFT,
     RIGHT,
+    BOTH,
 };
 
 std::unordered_set<const ActionsDAG::Node *> getExpressionInputs(const ActionsDAG::Node * expr)
@@ -115,13 +116,22 @@ ExpressionSide getExpressionSide(
 
     if (has_left && !has_right && !has_unavailable)
         return ExpressionSide::LEFT;
-    else if (!has_left && has_right && !has_unavailable)
+    if (!has_left && has_right && !has_unavailable)
         return ExpressionSide::RIGHT;
+    if (has_left && has_right && !has_unavailable)
+        return ExpressionSide::BOTH;
 
     return ExpressionSide::UNKNOWN;
 }
 
 using JoinConditionParts = std::vector<ActionsDAG>;
+
+struct ExtractedConditions
+{
+    JoinConditionParts equality_predicates;
+    JoinConditionParts residual_predicates;
+    bool trivial_filter = false;
+};
 
 const ActionsDAG::Node & createResultPredicate(
     ActionsDAG & filter_dag,
@@ -139,11 +149,12 @@ const ActionsDAG::Node & createResultPredicate(
 };
 
 
-std::pair<JoinConditionParts, bool> extractActionsForJoinCondition(
+ExtractedConditions extractActionsForJoinCondition(
     ActionsDAG & filter_dag,
     const std::string & filter_name,
     const Names & left_stream_available_columns,
-    const Names & right_stream_available_columns
+    const Names & right_stream_available_columns,
+    const bool push_non_equality
 )
 {
     auto * predicate = const_cast<ActionsDAG::Node *>(filter_dag.tryFindInOutputs(filter_name));
@@ -164,7 +175,8 @@ std::pair<JoinConditionParts, bool> extractActionsForJoinCondition(
     /// Extract all conjuncts from filter expression
     auto conjuncts_list = getConjunctsList(predicate);
 
-    JoinConditionParts result;
+    JoinConditionParts equality_result;
+    JoinConditionParts residual_result;
     std::unordered_set<const ActionsDAG::Node *> conjuncts_to_replace;
     ActionsDAG::NodeRawConstPtrs rejected_conjuncts;
     rejected_conjuncts.reserve(conjuncts_list.size());
@@ -179,7 +191,10 @@ std::pair<JoinConditionParts, bool> extractActionsForJoinCondition(
 
             /// We can't push equality condition into JOIN if types are not equal.
             if (!lhs->result_type->equals(*rhs->result_type))
+            {
+                rejected_conjuncts.push_back(conjunct);
                 continue;
+            }
 
             /// We need to check if arguments are coming from different sides of JOIN
             auto lhs_side = getExpressionSide(lhs, left_stream_allowed_nodes, right_stream_allowed_nodes);
@@ -188,16 +203,28 @@ std::pair<JoinConditionParts, bool> extractActionsForJoinCondition(
             if ((lhs_side == ExpressionSide::LEFT && rhs_side == ExpressionSide::RIGHT)
              || (lhs_side == ExpressionSide::RIGHT && rhs_side == ExpressionSide::LEFT))
             {
-                result.emplace_back(ActionsDAG::cloneSubDAG({ conjunct }, true));
+                equality_result.emplace_back(ActionsDAG::cloneSubDAG({ conjunct }, true));
                 conjuncts_to_replace.insert(conjunct);
                 continue;
             }
         }
+
+        if (push_non_equality)
+        {
+            auto conjunct_side = getExpressionSide(conjunct, left_stream_allowed_nodes, right_stream_allowed_nodes);
+            if (conjunct_side == ExpressionSide::BOTH)
+            {
+                residual_result.emplace_back(ActionsDAG::cloneSubDAG({ conjunct }, true));
+                conjuncts_to_replace.insert(conjunct);
+                continue;
+            }
+        }
+
         rejected_conjuncts.push_back(conjunct);
     }
 
     const auto trivial_filter = rejected_conjuncts.empty();
-    if (!result.empty())
+    if (!conjuncts_to_replace.empty())
     {
         /// There's a non-empty list of extracted condition parts.
         /// After JOIN step these equalities will always evaluate to true.
@@ -229,12 +256,12 @@ std::pair<JoinConditionParts, bool> extractActionsForJoinCondition(
         filter_dag.removeUnusedActions(/*allow_remove_inputs=*/false);
     }
 
-    return { std::move(result), trivial_filter };
+    return { std::move(equality_result), std::move(residual_result), trivial_filter };
 }
 
 }
 
-size_t tryMergeFilterIntoJoinCondition(QueryPlan::Node * parent_node, QueryPlan::Nodes &  /*nodes*/, const Optimization::ExtraSettings &)
+size_t tryMergeFilterIntoJoinCondition(QueryPlan::Node * parent_node, QueryPlan::Nodes &  /*nodes*/, const Optimization::ExtraSettings & extra_settings)
 {
     if (parent_node->children.size() != 1)
         return 0;
@@ -291,25 +318,27 @@ size_t tryMergeFilterIntoJoinCondition(QueryPlan::Node * parent_node, QueryPlan:
     auto right_stream_available_columns = get_available_columns(*right_stream_header);
 
     auto & filter_dag = filter_step->getExpression();
-    auto [equality_predicates, trivial_filter] = extractActionsForJoinCondition(
+    auto extracted = extractActionsForJoinCondition(
         filter_dag,
         filter_step->getFilterColumnName(),
         left_stream_available_columns,
-        right_stream_available_columns);
+        right_stream_available_columns,
+        extra_settings.push_cross_table_filter_into_join);
 
-    if (equality_predicates.empty())
+    if (extracted.equality_predicates.empty() && extracted.residual_predicates.empty())
         return 0;
 
-    for (auto && predicate : equality_predicates)
-    {
+    for (auto && predicate : extracted.equality_predicates)
         join_step->addConditions(std::move(predicate));
-    }
 
-    if (kind == JoinKind::Cross || kind == JoinKind::Comma)
+    for (auto && predicate : extracted.residual_predicates)
+        join_step->addResidualConditions(std::move(predicate));
+
+    if (!extracted.equality_predicates.empty() && (kind == JoinKind::Cross || kind == JoinKind::Comma))
         join_operator.kind = JoinKind::Inner;
 
     /// Remove FilterStep if filter expression is always true
-    if (trivial_filter)
+    if (extracted.trivial_filter)
     {
         if (filter_step->removesFilterColumn())
             filter_dag.removeUnusedResult(filter_step->getFilterColumnName());

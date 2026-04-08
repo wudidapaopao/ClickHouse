@@ -50,6 +50,8 @@ struct Optimization
 
         // parallel replicas
         bool parallel_replicas_filter_pushdown = false;
+
+        bool push_cross_table_filter_into_join = false;
     };
 
     using Function = size_t (*)(QueryPlan::Node *, QueryPlan::Nodes &, const ExtraSettings &);

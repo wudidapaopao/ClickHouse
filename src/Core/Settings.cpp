@@ -5828,6 +5828,10 @@ Allow to convert ANY JOIN to SEMI or ANTI JOIN if filter after JOIN always evalu
     DECLARE(Bool, query_plan_merge_filter_into_join_condition, true, R"(
 Allow to merge filter into `JOIN` condition and convert `CROSS JOIN` to `INNER`.
 )", 0) \
+    DECLARE(Bool, query_plan_push_cross_table_filter_into_join, false, R"(
+Allow to push non-equality cross-table filter conditions from WHERE into JOIN's internal filter (mixed_join_expression).
+This can reduce intermediate result materialization but requires hash join algorithm.
+)", 0) \
     DECLARE(Bool, query_plan_convert_join_to_in, false, R"(
 Allow to convert `JOIN` to subquery with `IN` if output columns tied to only left table. May cause wrong results with non-ANY JOINs (e.g. ALL JOINs which is the default).
 )", 0) \

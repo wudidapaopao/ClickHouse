@@ -84,6 +84,7 @@ void optimizeTreeFirstPass(const QueryPlanOptimizationSettings & optimization_se
         optimization_settings.use_skip_indexes_on_data_read,
         optimization_settings.read_in_order,
         optimization_settings.parallel_replicas_filter_pushdown,
+        optimization_settings.push_cross_table_filter_into_join,
     };
 
     while (!stack.empty())
@@ -194,6 +195,7 @@ void optimizeTreeSecondPass(
         optimization_settings.use_skip_indexes_on_data_read,
         optimization_settings.read_in_order,
         optimization_settings.parallel_replicas_filter_pushdown,
+        optimization_settings.push_cross_table_filter_into_join,
     };
 
     Stack stack;

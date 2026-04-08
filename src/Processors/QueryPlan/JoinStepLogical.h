@@ -115,6 +115,7 @@ public:
     }
 
     void addConditions(ActionsDAG actions_dag);
+    void addResidualConditions(ActionsDAG actions_dag);
     std::optional<ActionsDAG::ActionsForFilterPushDown> getFilterActions(JoinTableSide side, const SharedHeader & stream_header);
 
     struct ActionsDAGWithKeys

@@ -1195,7 +1195,11 @@ static QueryPlanNode buildPhysicalJoinImpl(
         }
     }
 
-    if (residual_filter_condition && (is_disjunctive_condition || !canPushDownFromOn(join_operator)))
+    constexpr std::array<JoinAlgorithm, 3> hash_algorithms = {JoinAlgorithm::HASH, JoinAlgorithm::PARALLEL_HASH, JoinAlgorithm::GRACE_HASH};
+    bool prefer_internal_filter = optimization_settings.push_cross_table_filter_into_join
+        && std::ranges::any_of(hash_algorithms, [&](auto algo) { return TableJoin::isEnabledAlgorithm(join_settings.join_algorithms, algo); });
+
+    if (residual_filter_condition && (is_disjunctive_condition || !canPushDownFromOn(join_operator) || prefer_internal_filter))
     {
         auto residual_filter_dag = JoinExpressionActions::getSubDAG(std::views::single(residual_filter_condition));
         ExpressionActionsPtr & mixed_join_expression = table_join->getMixedJoinExpression();
@@ -1654,6 +1658,14 @@ void JoinStepLogical::addConditions(ActionsDAG actions_dag)
     expression_actions.getActionsDAG()->mergeNodes(std::move(actions_dag), &conditions);
     for (const auto * node : conditions)
         join_operator.expression.emplace_back(node, expression_actions);
+}
+
+void JoinStepLogical::addResidualConditions(ActionsDAG actions_dag)
+{
+    ActionsDAG::NodeRawConstPtrs conditions;
+    expression_actions.getActionsDAG()->mergeNodes(std::move(actions_dag), &conditions);
+    for (const auto * node : conditions)
+        join_operator.residual_filter.emplace_back(node, expression_actions);
 }
 
 void registerJoinStep(QueryPlanStepRegistry & registry)
